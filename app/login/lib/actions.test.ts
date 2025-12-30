@@ -12,6 +12,7 @@ import {
   validateMFA,
   validateSessionToken,
 } from './actions';
+import { User } from '@/prisma/generated/client';
 
 const mocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
@@ -142,6 +143,21 @@ describe('validateSessionToken', () => {
 
     expect(result).toEqual({ session: null, user: null });
   });
+
+  it('should delete session if is expired and return null session and user', async () => {
+    prismaMock.session.findUnique.mockResolvedValue({
+      id: 'mocked-session-id',
+      userId: 1,
+      expiresAt: new Date(Date.now() - 100 * 60 * 60 * 24 * 30),
+    });
+
+    const result = await validateSessionToken('mocked-token');
+
+    expect(prismaMock.session.delete).toHaveBeenCalledWith({
+      where: { id: 'mocked-session-id' },
+    });
+    expect(result).toEqual({ session: null, user: null });
+  });
 });
 
 describe('invalidateSession', () => {
@@ -241,6 +257,67 @@ describe('signin', () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/');
     expect(redirect).toHaveBeenCalledWith('/');
   });
+
+  it('should return error if user email not found', async () => {
+    prismaMock.user.findFirst.mockResolvedValue(null);
+    const formData = mockFormData({
+      email: 'test@example.com',
+      password: 'password',
+    });
+    const result = await signin({}, formData);
+
+    expect(result.message).toBe(
+      'An error occurred while validating your credentials.'
+    );
+  });
+
+  it('should return error when user is locked', async () => {
+    prismaMock.user.findFirst.mockResolvedValue({
+      id: 1,
+      email: 'test@example.com',
+      password: 'mocked-hash',
+      failedAttempts: 5,
+      lockUntil: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+    } as User);
+
+    const formData = mockFormData({
+      email: 'test@example.com',
+      password: 'password',
+    });
+
+    const result = await signin({}, formData);
+
+    expect(result.message).toBe(
+      'Your account is temporarily locked due to multiple failed login attempts. Please try again later.'
+    );
+  });
+
+  it('should lock user account after 5 failed attempts', async () => {
+    mocks.hashPassword.mockReturnValue('mocked-hash-wrong');
+    prismaMock.user.findFirst.mockResolvedValue({
+      id: 1,
+      email: 'test@example.com',
+      password: 'mocked-hash',
+      failedAttempts: 5,
+      lockUntil: null,
+    } as User);
+
+    const formData = mockFormData({
+      email: 'test@example.com',
+      password: 'wrong-password',
+    });
+
+    const result = await signin({}, formData);
+
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { failedAttempts: 6, lockUntil: expect.any(Date) },
+    });
+
+    expect(result.message).toBe('Invalid email or password.');
+  });
+
+  
 });
 
 describe('getCurrentSession', () => {

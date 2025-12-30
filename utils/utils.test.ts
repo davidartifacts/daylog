@@ -2,15 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stringToColor } from './color';
 import { encodeBase32, encodeHex, hashPassword } from './crypto';
 import { createAndVerifyTransporter } from './email';
-import {
-  base64ToArrayBuffer,
-  bytesToBase64,
-  getImageUrlOrFile
-} from './image';
+import { base64ToArrayBuffer, bytesToBase64, getImageUrlOrFile } from './image';
 import { removeFile, saveBase64File } from './storage';
 import { isBase64, isUrl, truncateWord } from './text';
 import { generateTOTP, generateTOTPSecret, validateTOTP } from './totp';
 import { randomDelay } from './delay';
+import getSorting from './sorting';
+import { Prisma } from '@/prisma/generated/client';
 
 const mocks = vi.hoisted(() => ({
   createTransport: vi.fn(),
@@ -174,7 +172,7 @@ describe('Html Utils', () => {
 describe('Delay Utils', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout'], shouldAdvanceTime: true });
-  })
+  });
 
   it('delays execution', async () => {
     const start = Date.now();
@@ -182,5 +180,46 @@ describe('Delay Utils', () => {
     vi.advanceTimersByTime(300);
     const end = Date.now();
     expect(end - start).toBeGreaterThanOrEqual(300);
+  });
+});
+
+describe('Sorting Utils', () => {
+  it('returns correct sorting object', () => {
+    const sortings: {
+      sorting: string;
+      expected:
+        | Prisma.NoteOrderByWithRelationInput
+        | Prisma.BoardOrderByRelationAggregateInput;
+    }[] = [
+      {
+        sorting: 'created_asc',
+        expected: { createdAt: 'asc' },
+      },
+      {
+        sorting: 'created_desc',
+        expected: { createdAt: 'desc' },
+      },
+      {
+        sorting: 'updated_asc',
+        expected: { updatedAt: 'asc' },
+      },
+      {
+        sorting: 'updated_desc',
+        expected: { updatedAt: 'desc' },
+      },
+      {
+        sorting: 'title_asc',
+        expected: { title: 'asc' },
+      },
+      {
+        sorting: 'title_desc',
+        expected: { title: 'desc' },
+      },
+    ];
+
+    for (const { sorting, expected } of sortings) {
+      const result = getSorting(sorting);
+      expect(result).toEqual(expected);
+    }
   });
 });

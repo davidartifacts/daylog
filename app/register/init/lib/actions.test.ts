@@ -79,7 +79,7 @@ describe('signupInit', () => {
     const result = await signupInit(state, formData);
 
     expect(result.success).toBe(false);
-    expect(result.message).toBe('User already exists.');
+    expect(result.message).toBe('Admin user already exists.');
   });
 
   it('should create a new admin user if valid data is provided', async () => {
@@ -104,7 +104,7 @@ describe('signupInit', () => {
         role: 'admin',
       },
     });
-    expect(revalidatePath).toHaveBeenCalledWith('/', 'layout');
+    expect(revalidatePath).toHaveBeenCalledWith('/login', 'layout');
   });
 
   it('should return an error message if an exception occurs', async () => {
