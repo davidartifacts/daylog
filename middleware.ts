@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const PUBLIC_FILE = /\.(.*)$/;
+const PUBLIC_FILE = /^(?!\/\.(?!well-known\/)).*\.(.*)$/;
 
 export async function middleware(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
