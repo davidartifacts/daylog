@@ -63,7 +63,7 @@ docker run -d \
  -e DATABASE_URL=postgresql://postgres:postgres@daylog-db:5432/daylog?schema=public \
  -e ENVIRONMENT=production \
  -e STORAGE_PATH=/app/storage \
- davidartifacts/daylog:v1.0.0-rc.2
+ davidartifacts/daylog:latest
 ```
 
 ### Production Installation (Docker Compose)
