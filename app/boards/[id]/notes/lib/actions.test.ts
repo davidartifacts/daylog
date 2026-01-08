@@ -17,6 +17,7 @@ import {
   updateNote,
 } from './actions';
 import getSorting from '@/utils/sorting';
+import { mock } from 'node:test';
 
 // Mock S3 environment variables for tests
 process.env.S3_ENDPOINT = 'https://mock-s3-endpoint';
@@ -37,6 +38,7 @@ const mocks = vi.hoisted(() => ({
   })),
   uploadFileS3: vi.fn(),
   existsSync: vi.fn(),
+  revalidatePath: vi.fn(),
 }));
 
 vi.mock('@/app/api/v1/storage/lib/s3Storage', () => ({
@@ -60,6 +62,10 @@ vi.mock('@/utils/storage', () => ({
     ext: 'jpg',
     contentLength: 6,
   }),
+}));
+
+vi.mock('next/cache', () => ({
+  revalidatePath: mocks.revalidatePath,
 }));
 
 vi.mock('fs', () => {
@@ -116,6 +122,21 @@ describe('Note Actions', () => {
       where: { id: note.id, boards: { userId: user.id } },
       data: { ...updatedNote },
     });
+  });
+
+  it('should revalidate notes routes on update', async () => {
+    const note: Partial<Note> = {
+      id: 1,
+      title: 'Updated Note',
+      content: 'Updated Content',
+      boardsId: 1,
+    };
+
+    prismaMock.note.update.mockResolvedValue(note as Note);
+
+    await updateNote(note as Note);
+
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(`/boards/${note.boardsId}/notes`);
   });
 
   it('should delete a note', async () => {
