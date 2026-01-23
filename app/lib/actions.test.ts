@@ -3,7 +3,7 @@ import { prismaMock } from '@/prisma/singleton';
 import { redirect } from 'next/navigation';
 import { describe, expect, it, vi } from 'vitest';
 import { deleteSessionTokenCookie } from '../login/lib/cookies';
-import { search, SearchResult, signout } from './actions';
+import { getBoardsCount, search, SearchResult, signout } from './actions';
 import { NoteWithBoards } from '../boards/[id]/notes/lib/types';
 
 const mocks = vi.hoisted(() => ({
@@ -92,5 +92,32 @@ describe('search', () => {
         url: '/boards/2/notes',
       },
     ]);
+  });
+
+  it('should return empty array if no user session', async () => {
+    mocks.getCurrentSession.mockResolvedValue({ user: null });
+    const results = await search('test');
+    expect(results).toEqual([]);
+  });
+});
+
+describe('getBoardsCount', () => {
+  it('should return 0 if no user session', async () => {
+    mocks.getCurrentSession.mockResolvedValue({ user: null });
+    const count = await getBoardsCount();
+    expect(count).toBe(0);
+  });
+
+  it('should return the count of boards for the current user', async () => {
+    const mockSession = { user: { id: 1, name: 'John Doe', role: 'user' } };
+    mocks.getCurrentSession.mockResolvedValue(mockSession);
+    prismaMock.board.count.mockResolvedValue(5);
+
+    const count = await getBoardsCount();
+
+    expect(prismaMock.board.count).toHaveBeenCalledWith({
+      where: { userId: 1 },
+    });
+    expect(count).toBe(5);
   });
 });

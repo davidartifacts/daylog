@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 export function saveBase64File(base64String: string) {
-  const folderPath = process.env.STORAGE_PATH ?? 'storage';
+  const folderPath = process.env.STORAGE_PATH ?? './storage';
 
   if (!fs.existsSync(folderPath)) {
     fs.mkdirSync(folderPath, { recursive: true });

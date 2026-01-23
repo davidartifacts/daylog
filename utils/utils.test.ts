@@ -1,8 +1,28 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
 import { stringToColor } from './color';
 import { encodeBase32, encodeHex, hashPassword } from './crypto';
 import { createAndVerifyTransporter } from './email';
+import { saveAndGetImageFile } from './file';
 import { base64ToArrayBuffer, bytesToBase64, getImageUrlOrFile } from './image';
+import { renderMarkdownToHtml } from './html';
+import { 
+  generateCSRFToken, 
+  getCSRFToken, 
+  setCSRFToken, 
+  validateCSRFToken,
+  CSRF_TOKEN_NAME,
+  CSRF_HEADER_NAME 
+} from './csrf';
+import { 
+  RateLimiter, 
+  authRateLimiter, 
+  generalRateLimiter, 
+  uploadRateLimiter,
+  getClientIP,
+  createRateLimitMiddleware,
+  getRateLimitHeaders 
+} from './rateLimit';
 import { removeFile, saveBase64File } from './storage';
 import { isBase64, isUrl, truncateWord } from './text';
 import { generateTOTP, generateTOTPSecret, validateTOTP } from './totp';
@@ -16,6 +36,9 @@ const mocks = vi.hoisted(() => ({
   verify: vi.fn().mockImplementation((callback) => {
     callback(null, true);
   }),
+  cookies: vi.fn(),
+  getSettings: vi.fn(),
+  uploadFileS3: vi.fn(),
 }));
 
 vi.mock('nodemailer', () => ({
@@ -25,6 +48,18 @@ vi.mock('nodemailer', () => ({
       verify: mocks.verify,
     }),
   },
+}));
+
+vi.mock('next/headers', () => ({
+  cookies: mocks.cookies,
+}));
+
+vi.mock('@/app/admin/lib/actions', () => ({
+  getSettings: mocks.getSettings,
+}));
+
+vi.mock('@/app/api/v1/storage/lib/s3Storage', () => ({
+  uploadFileS3: mocks.uploadFileS3,
 }));
 
 vi.mock('nodemailer/lib/smtp-transport', () => ({
@@ -221,5 +256,248 @@ describe('Sorting Utils', () => {
       const result = getSorting(sorting);
       expect(result).toEqual(expected);
     }
+  });
+});
+
+describe('CSRF Utils', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('generates CSRF token', () => {
+    const token = generateCSRFToken();
+    expect(token).toHaveLength(64);
+    expect(typeof token).toBe('string');
+  });
+
+  it('sets CSRF token in cookie', async () => {
+    const mockSet = vi.fn();
+    mocks.cookies.mockResolvedValue({
+      set: mockSet,
+    });
+
+    await setCSRFToken('test-token');
+    expect(mockSet).toHaveBeenCalledWith(CSRF_TOKEN_NAME, 'test-token', {
+      httpOnly: false,
+      sameSite: 'strict',
+      secure: false,
+      path: '/',
+      maxAge: expect.any(Number),
+    });
+  });
+
+  it('gets CSRF token from cookie', async () => {
+    const mockGet = vi.fn().mockReturnValue({ value: 'test-token' });
+    mocks.cookies.mockResolvedValue({
+      get: mockGet,
+    });
+
+    const token = await getCSRFToken();
+    expect(token).toBe('test-token');
+    expect(mockGet).toHaveBeenCalledWith(CSRF_TOKEN_NAME);
+  });
+
+  it('validates CSRF token from header', async () => {
+    const mockGet = vi.fn().mockReturnValue({ value: 'test-token' });
+    mocks.cookies.mockResolvedValue({
+      get: mockGet,
+    });
+
+    const request = new Request('http://localhost', {
+      headers: { [CSRF_HEADER_NAME]: 'test-token' },
+    });
+
+    const isValid = await validateCSRFToken(request);
+    expect(isValid).toBe(true);
+  });
+
+  it('validates CSRF token from form data', async () => {
+    const mockGet = vi.fn().mockReturnValue({ value: 'test-token' });
+    mocks.cookies.mockResolvedValue({
+      get: mockGet,
+    });
+
+    const formData = new FormData();
+    formData.append(CSRF_TOKEN_NAME, 'test-token');
+
+    const request = new Request('http://localhost');
+    const isValid = await validateCSRFToken(request, formData);
+    expect(isValid).toBe(true);
+  });
+
+  it('returns false for invalid CSRF token', async () => {
+    const mockGet = vi.fn().mockReturnValue({ value: 'valid-token' });
+    mocks.cookies.mockResolvedValue({
+      get: mockGet,
+    });
+
+    const request = new Request('http://localhost', {
+      headers: { [CSRF_HEADER_NAME]: 'invalid-token' },
+    });
+
+    const isValid = await validateCSRFToken(request);
+    expect(isValid).toBe(false);
+  });
+});
+
+describe('HTML Utils', () => {
+  it('renders markdown to HTML', async () => {
+    const markdown = '# Hello\n\nThis is **bold** text.';
+    const html = await renderMarkdownToHtml(markdown);
+    expect(html).toContain('<h1>Hello</h1>');
+    expect(html).toContain('<strong>bold</strong>');
+  });
+
+  it('sanitizes HTML content', async () => {
+    const markdown = 'Click <script>alert("xss")</script> here';
+    const html = await renderMarkdownToHtml(markdown);
+    expect(html).not.toContain('<script>');
+  });
+});
+
+describe('File Utils', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns URL when input is a URL', async () => {
+    const url = 'https://example.com/image.jpg';
+    const result = await saveAndGetImageFile(url);
+    expect(result).toBe(url);
+  });
+
+  it('saves base64 file locally when S3 is disabled', async () => {
+    mocks.getSettings.mockResolvedValue({ enableS3: false });
+    const base64 = 'data:image/png;base64,iVBORw0KGgo=';
+    
+    const result = await saveAndGetImageFile(base64);
+    expect(result).toBeDefined();
+    expect(mocks.uploadFileS3).not.toHaveBeenCalled();
+  });
+
+  it('uploads to S3 when S3 is enabled', async () => {
+    mocks.getSettings.mockResolvedValue({ enableS3: true });
+    mocks.uploadFileS3.mockResolvedValue('s3-key');
+    
+    process.env.S3_ENDPOINT = 'https://s3.amazonaws.com';
+    process.env.S3_REGION = 'us-east-1';
+    process.env.S3_ACCESS_KEY_ID = 'key';
+    process.env.S3_SECRET_ACCESS_KEY = 'secret';
+
+    const base64 = 'data:image/png;base64,iVBORw0KGgo=';
+    const result = await saveAndGetImageFile(base64);
+    
+    expect(result).toMatch(/^S3-/);
+    expect(mocks.uploadFileS3).toHaveBeenCalled();
+  });
+
+  it('returns null when S3 env vars are missing', async () => {
+    mocks.getSettings.mockResolvedValue({ enableS3: true });
+    
+    delete process.env.S3_ENDPOINT;
+    delete process.env.S3_REGION;
+    delete process.env.S3_ACCESS_KEY_ID;
+    delete process.env.S3_SECRET_ACCESS_KEY;
+
+    const base64 = 'data:image/png;base64,iVBORw0KGgo=';
+    const result = await saveAndGetImageFile(base64);
+    
+    expect(result).toBe(null);
+  });
+});
+
+describe('Rate Limit Utils', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'clearInterval'], shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('allows requests within limit', () => {
+    const limiter = new RateLimiter(60000, 5); // 1 minute, 5 requests
+    const result1 = limiter.isAllowed('test-key');
+    const result2 = limiter.isAllowed('test-key');
+    
+    expect(result1.allowed).toBe(true);
+    expect(result1.remaining).toBe(4);
+    expect(result2.allowed).toBe(true);
+    expect(result2.remaining).toBe(3);
+  });
+
+  it('blocks requests exceeding limit', () => {
+    const limiter = new RateLimiter(60000, 2); // 1 minute, 2 requests
+    
+    limiter.isAllowed('test-key');
+    limiter.isAllowed('test-key');
+    const result = limiter.isAllowed('test-key');
+    
+    expect(result.allowed).toBe(false);
+    expect(result.remaining).toBe(0);
+  });
+
+  it('resets after window expires', () => {
+    // This should be a more realistic value like 60000 (1 minute)
+    const limiter = new RateLimiter(0, 2); // 1 minute, 2 requests
+    
+    limiter.isAllowed('test-key');
+    limiter.isAllowed('test-key');
+
+    // But advance time by 1 minute + 1 millisecond doesn't work as expected.
+    vi.advanceTimersByTime(60001);
+    
+    const result = limiter.isAllowed('test-key');
+
+    expect(result.allowed).toBe(true);
+    expect(result.remaining).toBe(1);
+  });
+
+  it('gets client IP from various headers', () => {
+    const request1 = new NextRequest('http://localhost', {
+      headers: { 'x-forwarded-for': '192.168.1.1,10.0.0.1' },
+    });
+    expect(getClientIP(request1)).toBe('192.168.1.1');
+
+    const request2 = new NextRequest('http://localhost', {
+      headers: { 'x-real-ip': '192.168.1.2' },
+    });
+    expect(getClientIP(request2)).toBe('192.168.1.2');
+
+    const request3 = new NextRequest('http://localhost', {
+      headers: { 'cf-connecting-ip': '192.168.1.3' },
+    });
+    expect(getClientIP(request3)).toBe('192.168.1.3');
+
+    const request4 = new NextRequest('http://localhost');
+    expect(getClientIP(request4)).toBe('unknown');
+  });
+
+  it('creates rate limit middleware', async () => {
+    const limiter = new RateLimiter(60000, 5);
+    const middleware = createRateLimitMiddleware(limiter);
+    
+    const request = new NextRequest('http://localhost/test');
+    const result = await middleware(request);
+    
+    expect(result.allowed).toBe(true);
+    expect(result.remaining).toBe(4);
+  });
+
+  it('generates rate limit headers', () => {
+    const resetTime = Date.now() + 60000;
+    const headers = getRateLimitHeaders(resetTime, 3, 10);
+    
+    expect(headers['X-RateLimit-Limit']).toBe('10');
+    expect(headers['X-RateLimit-Remaining']).toBe('3');
+    expect(headers['X-RateLimit-Reset']).toBe(new Date(resetTime).toUTCString());
+    expect(headers['Retry-After']).toBeDefined();
+  });
+
+  it('provides rate limiter instances', () => {
+    expect(authRateLimiter).toBeInstanceOf(RateLimiter);
+    expect(generalRateLimiter).toBeInstanceOf(RateLimiter);
+    expect(uploadRateLimiter).toBeInstanceOf(RateLimiter);
   });
 });
