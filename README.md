@@ -2,7 +2,7 @@
 
 ![daylog_portrait](resources/readme_logo.png)
 
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=DavidArtifacts_daylog&metric=alert_status&token=454f2e190f81f0af13315e8abff724843c1e5665)](https://sonarcloud.io/summary/new_code?id=DavidArtifacts_daylog)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=artifacts-oss_daylog&metric=alert_status&token=454f2e190f81f0af13315e8abff724843c1e5665)](https://sonarcloud.io/summary/new_code?id=artifacts-oss_daylog)
 
 ✨ A board based note taking and markdown editor web app.
 
@@ -63,7 +63,7 @@ docker run -d \
  -e DATABASE_URL=postgresql://postgres:postgres@daylog-db:5432/daylog?schema=public \
  -e ENVIRONMENT=production \
  -e STORAGE_PATH=/app/storage \
- davidartifacts/daylog:latest
+ artifacts-oss/daylog:latest
 ```
 
 ### Production Installation (Docker Compose)
@@ -233,7 +233,7 @@ Feel free to use it as your personal note-taking app or share it with your frien
 
 ### Donations
 
-Money is not the best reward—your time and collaboration are. However, if you'd like to support me [(the author)](https://github.com/DavidArtifacts), you can make a donation to keep me motivated and hydrated (with some coffee, of course) at:
+Money is not the best reward—your time and collaboration are. However, if you'd like to support me [(the author)](https://github.com/artifacts-dav), you can make a donation to keep me motivated and hydrated (with some coffee, of course) at:
 
 <a href="https://www.buymeacoffee.com/davidartifacts" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 30px !important;width: 109px !important;" ></a>
 

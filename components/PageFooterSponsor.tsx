@@ -35,10 +35,10 @@ export default function PageFooterSponsor() {
               <li className="list-inline-item">
                 Made with <IconHeartFilled /> by{' '}
                 <a
-                  href="https://github.com/DavidArtifacts"
+                  href="https://github.com/artifacts-dav"
                   className="link-secondary"
                 >
-                  DavidArtifacts
+                  David
                 </a>
               </li>
               <li className="list-inline-item">
