@@ -38,7 +38,7 @@ export default function PageFooterSponsor() {
                   href="https://github.com/artifacts-dav"
                   className="link-secondary"
                 >
-                  David
+                  David R<sup>2</sup>
                 </a>
               </li>
               <li className="list-inline-item">
@@ -47,7 +47,7 @@ export default function PageFooterSponsor() {
                   className="link-secondary"
                   rel="noopener"
                 >
-                  {getVersion()}
+                  v{getVersion()}
                 </a>
               </li>
             </ul>

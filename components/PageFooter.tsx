@@ -26,7 +26,7 @@ export default function PageFooter() {
                   className="link-secondary"
                   rel="noopener"
                 >
-                  {getVersion()}
+                  v{getVersion()}
                 </a>
               </li>
             </ul>
